@@ -1,2 +1,3 @@
-# mysqlie
+# MySQLie
+
 MySQLi extended
