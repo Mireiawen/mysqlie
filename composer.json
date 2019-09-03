@@ -1,0 +1,23 @@
+{
+	"name": "mireiawen/mysqlie",
+	"description": "MySQLi extended",
+	"type": "library",
+	"license": "MIT",
+	"authors": [
+		{
+			"name": "Mira Manninen",
+			"email": "mir@mireiawen.net"
+		}
+	],
+	"minimum-stability": "dev",
+	"require": {
+		"php": ">=7.3.0",
+		"ext-gettext": "*",
+		"ext-mysqli": "*"
+	},
+	"autoload": {
+		"psr-4": {
+			"Mireiawen\\MySQLie\\": "includes/"
+		}
+	}
+}
