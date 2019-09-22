@@ -7,12 +7,13 @@ use mysqli;
 
 /**
  * Extend the MySQLi class with custom functionality
+ *
+ * @package Mireiawen\MySQLie
  */
 class MySQLie extends mysqli
 {
 	/**
-	 * Construct the MySQLi class and set the
-	 * connection character set
+	 * Open a new connection to the MySQL server
 	 *
 	 * @param string $database
 	 *    The database name to use
@@ -42,36 +43,49 @@ class MySQLie extends mysqli
 			throw new \Exception(\sprintf(\_('Unable to connect to database: %s'), $this->connect_error));
 		}
 		
-		if (!$this->set_charset($charset))
-		{
-			throw new \Exception(\sprintf(\_('Unable to set character set: %s'), $this->error));
-		}
+		$this->set_charset($charset);
+	}
+	
+	/* ************************************************************************
+	 * Custom methods begin here
+	 * ************************************************************************/
+	
+	/**
+	 * Escape an identifier name for the SQL query
+	 *
+	 * @param string $name
+	 *  The identifier to escape
+	 *
+	 * @return string
+	 *    The escaped string
+	 *
+	 * @todo Is there better way to do this, like querying database for escape char?
+	 */
+	public function escape_identifier(string $name) : string
+	{
+		return \sprintf('`%s`', $name);
 	}
 	
 	/**
-	 * Truncates the given table to zero rows
+	 * Escape the identifiers in the SQL query
 	 *
-	 * @param string $table
-	 *    Name of the table to be truncated
+	 * @param string $sql
+	 *    The query to escape
 	 *
-	 * @throws \Exception
-	 *  On database errors
+	 * @param string[] $identifiers
+	 *    The identifier list
+	 *
+	 * @return string
+	 *    The escaped query
 	 */
-	public function truncate(string $table) : void
+	public function escape_query_identifiers(string $sql, array $identifiers) : string
 	{
-		// Prepare the query
-		$sql = \sprintf('TRUNCATE TABLE %s', $this->escape_identifier($table));
-		$stmt = $this->prepare($sql);
-		if ($stmt === FALSE)
+		foreach ($identifiers as &$identifier)
 		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $this->error));
+			$identifier = $this->escape_identifier($identifier);
 		}
 		
-		// Execute it
-		if (!$stmt->execute())
-		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $stmt->error));
-		}
+		return \vsprintf($sql, $identifiers);
 	}
 	
 	/**
@@ -89,24 +103,44 @@ class MySQLie extends mysqli
 		// Prepare the query
 		$sql = 'SET FOREIGN_KEY_CHECKS = ?';
 		$stmt = $this->prepare($sql);
-		if ($stmt === FALSE)
-		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $this->error));
-		}
-		
 		
 		// Bind the parameters
 		$s = \intval($state);
-		if (!$stmt->bind_param('i', $s))
-		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $stmt->error));
-		}
+		$stmt->bind_param('i', $s);
 		
 		// Execute it
-		if (!$stmt->execute())
+		$stmt->execute();
+	}
+	
+	/**
+	 * Get the current status autocommit status from the database
+	 *
+	 * @return bool
+	 *    The autocommit status; TRUE if
+	 *    it is on, FALSE if it is off
+	 *
+	 * @throws \Exception
+	 *  On database errors
+	 */
+	public function get_autocommit() : bool
+	{
+		// Prepare the query
+		$sql = 'SELECT @@autocommit';
+		$stmt = $this->prepare($sql);
+		
+		// Get the actual result
+		$row = $stmt->fetch_first();
+		
+		// Return the status
+		if (isset($row['@@autocommit']))
 		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $stmt->error));
+			return (bool)($row['@@autocommit']);
 		}
+		
+		// Status was not known, try to set it
+		$this->autocommit(TRUE);
+		
+		return TRUE;
 	}
 	
 	/**
@@ -124,28 +158,18 @@ class MySQLie extends mysqli
 	public function get_autoincrement(string $table) : int
 	{
 		// Prepare the query
-		$sql = \sprintf('SELECT %s FROM %s.%s WHERE %s = ? AND %s = ?',
-			$this->escape_identifier('AUTO_INCREMENT'),
-			$this->escape_identifier('information_schema'),
-			$this->escape_identifier('tables'),
-			$this->escape_identifier('table_name'),
-			$this->escape_identifier('table_schema')
+		$sql = $this->escape_query_identifiers(
+			'SELECT %s FROM %s.%s WHERE %s = ? AND %s = ?',
+			['AUTO_INCREMENT', 'information_schema', 'tables', 'table_name', 'table_schema']
 		);
 		$stmt = $this->prepare($sql);
-		if ($stmt === FALSE)
-		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $this->error));
-		}
 		
 		// Bind the parameters
 		$schema = \get_class($this);
-		if (!$stmt->bind_param('ss', $table, $schema))
-		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $stmt->error));
-		}
+		$stmt->bind_param('ss', $table, $schema);
 		
 		// Execute the query
-		$row = $this->fetch_first($stmt);
+		$row = $stmt->fetch_first();
 		if (isset($row['AUTO_INCREMENT']))
 		{
 			return $row['AUTO_INCREMENT'];
@@ -155,139 +179,619 @@ class MySQLie extends mysqli
 	}
 	
 	/**
-	 * Fetch the first row of the statement and return
-	 * the result as an associative array
+	 * Truncates the given table to zero rows
 	 *
-	 * @param \mysqli_stmt $stmt
-	 *    A prepared MySQLi statement
+	 * @param string $table
+	 *    Name of the table to be truncated
 	 *
-	 * @return array
-	 *    A result row as an associative array
+	 * @throws \Exception
+	 *  On database errors
+	 */
+	public function truncate(string $table) : void
+	{
+		// Prepare the query
+		$sql = $this->escape_query_identifiers('TRUNCATE TABLE %s', [$table]);
+		$stmt = $this->prepare($sql);
+		
+		// Execute it
+		$stmt->execute();
+	}
+	
+	/* ************************************************************************
+	 * Overloaded methods begin here
+	 * ************************************************************************/
+	
+	/**
+	 * Turns on or off auto-committing database modifications
+	 *
+	 * @param bool $mode
+	 *    Whether to turn on auto-commit or not
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function autocommit(bool $mode) : void
+	{
+		if (!parent::autocommit($mode))
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Starts a transaction
+	 *
+	 * @param int $flags
+	 *    See https://www.php.net/manual/mysqli.begin-transaction.php
+	 *
+	 * @param string|null $name
+	 *    Savepoint name for the transaction
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function begin_transaction(int $flags = 0, ?string $name = NULL) : void
+	{
+		if (!parent::begin_transaction($flags, $name))
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Changes the user of the specified database connection
+	 *
+	 * @param string $user
+	 *    The MySQL user name
+	 *
+	 * @param string $password
+	 *    The MySQL password
+	 *
+	 * @param string $database
+	 *    The database to change to
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function change_user(string $user, string $password, string $database) : void
+	{
+		if (!parent::change_user($user, $password, $database))
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Closes a previously opened database connection
 	 *
 	 * @throws \Exception
 	 *    On database errors
 	 */
-	public function fetch_first(\mysqli_stmt $stmt) : array
+	public function close() : void
 	{
-		// Execute the query itself
-		if (!$stmt->execute())
+		if (!parent::close())
 		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $stmt->error));
+			$this->throw_error();
 		}
-		
-		// Get result
-		if (!$res = $stmt->get_result())
-		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $stmt->error));
-		}
-		
-		// Get first row
-		$row = $res->fetch_assoc();
-		
-		// Free the result
-		$res->free();
-		
-		// Return the row
-		return $row;
 	}
 	
 	/**
-	 * @brief Fetch the result as an associative array
+	 * Commits the current transaction
 	 *
-	 * Fetch all the result rows of the stmt and return
-	 * those as associative array
+	 * @param int $flags
+	 *    A bitmask of MYSQLI_TRANS_COR_* constants
 	 *
-	 * @param \mysqli_stmt $stmt
-	 *    A prepared MySQLi statement
+	 * @param string|NULL $name
+	 *    If provided then COMMIT/$name/ is executed
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function commit(int $flags = 0, ?string $name = NULL) : void
+	{
+		if (!parent::commit($flags, $name))
+		{
+			$this->throw_error();
+		};
+	}
+	
+	/**
+	 * Returns statistics about the client connection
 	 *
 	 * @return array
-	 *    An array of result rows
+	 *    Array with connection stats
 	 *
 	 * @throws \Exception
-	 *  On database errors
+	 *    On database errors
 	 */
-	public function fetch_assoc(\mysqli_stmt $stmt) : array
+	public function get_connection_stats() : array
 	{
-		// Execute the query itself
-		if (!$stmt->execute())
+		$result = parent::get_connection_stats();
+		if ($result === FALSE)
 		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $stmt->error));
+			$this->throw_error();
 		}
 		
-		// Get result
-		if (!$res = $stmt->get_result())
-		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $stmt->error));
-		}
-		
-		// Get all rows
-		$rows = [];
-		while (TRUE)
-		{
-			$row = $res->fetch_assoc();
-			if ($row === NULL)
-			{
-				break;
-			}
-			$rows[] = $row;
-		}
-		
-		// Free the result and return rows
-		$res->free();
-		return $rows;
+		return $result;
 	}
 	
 	/**
-	 * Get the current status autocommit status
-	 * from the database
+	 * Asks the server to kill a MySQL thread
 	 *
-	 * @return bool
-	 *    The autocommit status; TRUE if
-	 *    it is on, FALSE if it is off
+	 * @param int $processid
+	 *    MySQL thread to kill
 	 *
 	 * @throws \Exception
-	 *  On database errors
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function get_autocommit() : bool
+	public function kill(int $processid) : void
 	{
-		// Prepare the query
-		$sql = 'SELECT @@autocommit';
-		$stmt = $this->prepare($sql);
+		if (!parent::kill($processid))
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Prepare next result from multi_query
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 */
+	public function next_result() : void
+	{
+		if (!parent::next_result())
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Set options
+	 *
+	 * @param int $option
+	 *    The option that you want to set
+	 *
+	 * @param mixed $value
+	 *    The value for the option
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function options(int $option, $value) : void
+	{
+		if (parent::options($option, $value))
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Pings a server connection
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 */
+	public function ping() : void
+	{
+		if (!parent::ping())
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Poll connections
+	 *
+	 * @param array $read
+	 *    List of connections to check for outstanding results that can be read
+	 *
+	 * @param array $error
+	 *    List of connections on which an error occurred, for example, query failure or lost connection
+	 *
+	 * @param array $reject
+	 *    List of connections rejected because no asynchronous query has been run on for which the function could poll results
+	 *
+	 * @param int $sec
+	 *    Maximum number of seconds to wait, must be non-negative
+	 *
+	 * @param int $usec
+	 *    Maximum number of microseconds to wait, must be non-negative
+	 *
+	 * @return int
+	 *    Returns number of ready connections
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function poll(array &$read, array &$error, array &$reject, int $sec, int $usec = 0) : int
+	{
+		$result = parent::poll($read, $error, $reject, $sec, $usec);
+		if ($result === FALSE)
+		{
+			$this->throw_error();
+		}
+		
+		return $result;
+	}
+	
+	/**
+	 * Prepare an SQL statement for execution
+	 *
+	 * @param string $query
+	 *    The query, as a string
+	 *
+	 * @return MySQLie_stmt
+	 *    Prepared statement object
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function prepare(string $query) : MySQLie_stmt
+	{
+		$stmt = new MySQLie_stmt($this, $query);
 		if ($stmt === FALSE)
 		{
 			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $this->error));
 		}
 		
-		// Get the actual result
-		$row = $this->fetch_first($stmt);
-		
-		// Return the status
-		if (isset($row['@@autocommit']))
-		{
-			return (bool)($row['@@autocommit']);
-		}
-		
-		// Status was not known, try to set it
-		if (!$this->autocommit(TRUE))
-		{
-			throw new \Exception(\sprintf(_('Unable to execute database query: %s'), $this->error));
-		}
-		return TRUE;
+		return $stmt;
 	}
 	
 	/**
-	 * Escape an identifier name for the SQL query
+	 * @param string $query
+	 * @param int $resultmode
 	 *
-	 * @param string $name
-	 *  The identifier to escape
+	 * @return \mysqli_result|null
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function query(string $query, int $resultmode = MYSQLI_STORE_RESULT) : ?\mysqli_result
+	{
+		$result = parent::query($query, $resultmode);
+		
+		// Check for error
+		if ($result === FALSE && $this->errno !== 0)
+		{
+			$this->throw_error();
+		}
+		
+		if ($result === FALSE)
+		{
+			return NULL;
+		}
+		
+		return $result;
+	}
+	
+	/**
+	 * Opens a connection to a mysql server
+	 *
+	 * @param string|null $host
+	 *    Can be either a host name or an IP address. Passing the NULL value or the string "localhost" to this parameter, the local host is assumed
+	 *
+	 * @param string|null $username
+	 *    The MySQL user name
+	 *
+	 * @param string|null $passwd
+	 *    If provided or NULL, the MySQL server will attempt to authenticate the user against those user records which have no password only
+	 *
+	 * @param string|null $dbname
+	 *    If provided will specify the default database to be used when performing queries
+	 *
+	 * @param int|null $port
+	 *    Specifies the port number to attempt to connect to the MySQL server
+	 *
+	 * @param string|null $socket
+	 *    Specifies the socket or named pipe that should be used
+	 *
+	 * @param int|null $flags
+	 *    With the parameter flags you can set different connection options
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function real_connect(?string $host = NULL, ?string $username = NULL, ?string $passwd = NULL, ?string $dbname = NULL, ?int $port = NULL, ?string $socket = NULL, ?int $flags = NULL) : void
+	{
+		if (!parent::real_connect($host, $username, $passwd, $dbname, $port, $socket, $flags))
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Escapes special characters in a string for use in an SQL statement, taking into account the current charset of the connection
+	 *
+	 * @param string $escapestr
+	 *    The string to be escaped
 	 *
 	 * @return string
 	 *    The escaped string
 	 *
-	 * @todo Is there better way to do this, like querying database for escape char?
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function escape_identifier(string $name) : string
+	public function real_escape_string(string $escapestr) : string
 	{
-		return \sprintf('`%s`', $name);
+		$result = @parent::real_escape_string($escapestr);
+		if ($result === NULL)
+		{
+			$this->throw_error();
+		}
+		
+		return $result;
+	}
+	
+	/**
+	 * Execute an SQL query
+	 *
+	 * @param string $query
+	 *    The query, as a string
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function real_query(string $query) : void
+	{
+		if (!parent::real_query($query))
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Get result from async query
+	 *
+	 * @return \mysqli_result
+	 *    The query result
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function reap_async_query() : \mysqli_result
+	{
+		$result = parent::reap_async_query();
+		if ($result === FALSE)
+		{
+			$this->throw_error();
+		}
+		
+		return $result;
+	}
+	
+	/**
+	 * Flushes tables or caches, or resets the replication server information
+	 *
+	 * @param int $options
+	 *    The options to refresh, using the MYSQLI_REFRESH_* constants
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function refresh(int $options) : void
+	{
+		/** @noinspection PhpVoidFunctionResultUsedInspection */
+		if (!parent::refresh($options))
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Removes the named savepoint from the set of savepoints of the current transaction
+	 *
+	 * @param string $name
+	 *    Name of the savepoint to remove
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function release_savepoint(string $name) : void
+	{
+		if (!parent::release_savepoint($name))
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Rolls back current transaction
+	 *
+	 * @param int $flags
+	 *    A bitmask of MYSQLI_TRANS_COR_* constants
+	 *
+	 * @param string|null $name
+	 *    If provided then ROLLBACK/$name/ is executed
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function rollback(int $flags = 0, ?string $name = NULL) : void
+	{
+		if (!parent::rollback($flags, $name))
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Set a named transaction savepoint
+	 *
+	 * @param string $name
+	 *    Name of the savepoint
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function savepoint(string $name) : void
+	{
+		if (!parent::savepoint($name))
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Selects the default database for database queries
+	 *
+	 * @param string $dbname
+	 *    The database name.
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function select_db(string $dbname) : void
+	{
+		if (!parent::select_db($dbname))
+		{
+			$this->throw_error();
+		}
+	}
+	
+	/**
+	 * Sets the default client character set
+	 *
+	 * @param string $charset
+	 *    The charset to be set as default
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function set_charset(string $charset) : void
+	{
+		if (!parent::set_charset($charset))
+		{
+			throw new \Exception(\sprintf(\_('Unable to set character set: %s'), $this->error));
+		}
+	}
+	
+	/**
+	 * Gets the current system status
+	 *
+	 * @return string
+	 *    A string describing the server status
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 */
+	public function stat() : string
+	{
+		$result = parent::stat();
+		if ($result === FALSE)
+		{
+			$this->throw_error();
+		}
+		
+		return $result;
+	}
+	
+	/**
+	 * Constructs a new mysqli_stmt object
+	 *
+	 * @return MySQLie_stmt
+	 *    The initialized statement object
+	 */
+	public function stmt_init() : MySQLie_stmt
+	{
+		$stmt = new MySQLie_stmt($this, NULL);
+		return $stmt;
+	}
+	
+	/**
+	 * Transfers a result set from the last query
+	 *
+	 * @return \mysqli_result|null
+	 *    The buffered result object
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
+	 */
+	public function store_result() : ?\mysqli_result
+	{
+		$result = parent::store_result();
+		
+		// Check for error
+		if ($result === FALSE && $this->errno !== 0)
+		{
+			$this->throw_error();
+		}
+		
+		if ($result === FALSE)
+		{
+			return NULL;
+		}
+		
+		return $result;
+	}
+	
+	/**
+	 * Initiate a result set retrieval
+	 *
+	 * @return \mysqli_result
+	 *    The buffered result object
+	 *
+	 * @throws \Exception
+	 *    On database errors
+	 */
+	public function use_result() : \mysqli_result
+	{
+		$result = parent::use_result();
+		
+		if ($result === FALSE)
+		{
+			$this->throw_error();
+		}
+		
+		return $result;
+	}
+	
+	/**
+	 * Throw the database error
+	 *
+	 * @throws \Exception
+	 */
+	protected function throw_error() : void
+	{
+		throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $this->error));
 	}
 }
