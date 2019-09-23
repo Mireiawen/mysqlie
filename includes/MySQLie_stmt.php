@@ -82,10 +82,8 @@ class MySQLie_stmt extends mysqli_stmt
 	 *
 	 * @throws \Exception
 	 *    If $attr is not found
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function attr_get(int $attr) : int
+	public function attr_get($attr) : int
 	{
 		$value = parent::attr_get($attr);
 		if ($value === FALSE)
@@ -108,10 +106,8 @@ class MySQLie_stmt extends mysqli_stmt
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function bind_param(string $types, &$var1, &...$_) : void
+	public function bind_param($types, &$var1, &...$_) : void
 	{
 		if (!parent::bind_param($types, $var1, $_))
 		{
@@ -235,10 +231,8 @@ class MySQLie_stmt extends mysqli_stmt
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function prepare(string $query) : void
+	public function prepare($query) : void
 	{
 		if (!parent::prepare($query))
 		{
@@ -295,10 +289,8 @@ class MySQLie_stmt extends mysqli_stmt
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function send_long_data(int $param_nr, string $data) : void
+	public function send_long_data($param_nr, $data) : void
 	{
 		if (!parent::send_long_data($param_nr, $data))
 		{

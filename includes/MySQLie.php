@@ -37,8 +37,8 @@ class MySQLie extends mysqli
 			throw new \Exception(\_('MySQLi extension is required!'));
 		}
 		
-		parent::__construct($hostname, $username, $password, $database);
-		if ($this->errno)
+		@parent::__construct($hostname, $username, $password, $database);
+		if ($this->connect_errno)
 		{
 			throw new \Exception(\sprintf(\_('Unable to connect to database: %s'), $this->connect_error));
 		}
@@ -209,10 +209,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function autocommit(bool $mode) : void
+	public function autocommit($mode) : void
 	{
 		if (!parent::autocommit($mode))
 		{
@@ -231,10 +229,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function begin_transaction(int $flags = 0, ?string $name = NULL) : void
+	public function begin_transaction($flags = NULL, $name = NULL) : void
 	{
 		if (!parent::begin_transaction($flags, $name))
 		{
@@ -256,10 +252,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function change_user(string $user, string $password, string $database) : void
+	public function change_user($user, $password, $database) : void
 	{
 		if (!parent::change_user($user, $password, $database))
 		{
@@ -292,10 +286,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function commit(int $flags = 0, ?string $name = NULL) : void
+	public function commit($flags = NULL, $name = NULL) : void
 	{
 		if (!parent::commit($flags, $name))
 		{
@@ -331,10 +323,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function kill(int $processid) : void
+	public function kill($processid) : void
 	{
 		if (!parent::kill($processid))
 		{
@@ -367,10 +357,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function options(int $option, $value) : void
+	public function options($option, $value) : void
 	{
 		if (parent::options($option, $value))
 		{
@@ -415,15 +403,13 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function poll(array &$read, array &$error, array &$reject, int $sec, int $usec = 0) : int
+	public static function poll(&$read, &$error, &$reject, $sec, $usec = 0) : int
 	{
 		$result = parent::poll($read, $error, $reject, $sec, $usec);
 		if ($result === FALSE)
 		{
-			$this->throw_error();
+			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), _('Database polling failed')));
 		}
 		
 		return $result;
@@ -440,15 +426,13 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function prepare(string $query) : MySQLie_stmt
+	public function prepare($query) : MySQLie_stmt
 	{
 		$stmt = new MySQLie_stmt($this, $query);
 		if ($stmt === FALSE)
 		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $this->error));
+			$this->throw_error();
 		}
 		
 		return $stmt;
@@ -461,10 +445,8 @@ class MySQLie extends mysqli
 	 * @return \mysqli_result|null
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function query(string $query, int $resultmode = MYSQLI_STORE_RESULT) : ?\mysqli_result
+	public function query($query, $resultmode = MYSQLI_STORE_RESULT) : ?\mysqli_result
 	{
 		$result = parent::query($query, $resultmode);
 		
@@ -508,10 +490,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function real_connect(?string $host = NULL, ?string $username = NULL, ?string $passwd = NULL, ?string $dbname = NULL, ?int $port = NULL, ?string $socket = NULL, ?int $flags = NULL) : void
+	public function real_connect($host = NULL, $username = NULL, $passwd = NULL, $dbname = NULL, $port = NULL, $socket = NULL, $flags = NULL) : void
 	{
 		if (!parent::real_connect($host, $username, $passwd, $dbname, $port, $socket, $flags))
 		{
@@ -530,10 +510,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function real_escape_string(string $escapestr) : string
+	public function real_escape_string($escapestr) : string
 	{
 		$result = @parent::real_escape_string($escapestr);
 		if ($result === NULL)
@@ -552,10 +530,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function real_query(string $query) : void
+	public function real_query($query) : void
 	{
 		if (!parent::real_query($query))
 		{
@@ -571,8 +547,6 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
 	public function reap_async_query() : \mysqli_result
 	{
@@ -593,10 +567,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function refresh(int $options) : void
+	public function refresh($options) : void
 	{
 		/** @noinspection PhpVoidFunctionResultUsedInspection */
 		if (!parent::refresh($options))
@@ -613,10 +585,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function release_savepoint(string $name) : void
+	public function release_savepoint($name) : void
 	{
 		if (!parent::release_savepoint($name))
 		{
@@ -635,10 +605,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function rollback(int $flags = 0, ?string $name = NULL) : void
+	public function rollback($flags = 0, $name = NULL) : void
 	{
 		if (!parent::rollback($flags, $name))
 		{
@@ -654,10 +622,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function savepoint(string $name) : void
+	public function savepoint($name) : void
 	{
 		if (!parent::savepoint($name))
 		{
@@ -673,10 +639,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function select_db(string $dbname) : void
+	public function select_db($dbname) : void
 	{
 		if (!parent::select_db($dbname))
 		{
@@ -692,10 +656,8 @@ class MySQLie extends mysqli
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function set_charset(string $charset) : void
+	public function set_charset($charset) : void
 	{
 		if (!parent::set_charset($charset))
 		{
@@ -738,15 +700,16 @@ class MySQLie extends mysqli
 	/**
 	 * Transfers a result set from the last query
 	 *
+	 * @param int $option
+	 *    The option that you want to set
+	 *
 	 * @return \mysqli_result|null
 	 *    The buffered result object
 	 *
 	 * @throws \Exception
 	 *    On database errors
-	 *
-	 * @noinspection PhpSignatureMismatchDuringInheritanceInspection
 	 */
-	public function store_result() : ?\mysqli_result
+	public function store_result($option = NULL) : ?\mysqli_result
 	{
 		$result = parent::store_result();
 		
