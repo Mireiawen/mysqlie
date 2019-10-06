@@ -101,7 +101,7 @@ class MySQLie_stmt extends mysqli_stmt
 	 *     string that contains one or more characters which specify the types for the corresponding bind variables
 	 *
 	 * @param mixed $var1
-	 * @param mixed ...$_
+	 * @param array|mixed ...$_
 	 *    The number of variables and length of string types must match the parameters in the statement
 	 *
 	 * @throws \Exception
@@ -109,7 +109,7 @@ class MySQLie_stmt extends mysqli_stmt
 	 */
 	public function bind_param($types, &$var1, &...$_) : void
 	{
-		if (!parent::bind_param($types, $var1, $_))
+		if (!parent::bind_param($types, $var1, ...$_))
 		{
 			$this->throw_error();
 		}
@@ -127,7 +127,7 @@ class MySQLie_stmt extends mysqli_stmt
 	 */
 	public function bind_result(&$var1, &...$_) : void
 	{
-		if (!parent::bind_result($var1, $_))
+		if (!parent::bind_result($var1, ...$_))
 		{
 			$this->throw_error();
 		}
