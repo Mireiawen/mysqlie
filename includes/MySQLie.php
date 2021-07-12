@@ -456,7 +456,13 @@ class MySQLie extends mysqli
 			$this->throw_error();
 		}
 		
+		// False is failure, but we have no idea what went wrong
 		if ($result === FALSE)
+		{
+			$this->throw_error(_('Unknown error'));
+		}
+		
+		if ($result === TRUE)
 		{
 			return NULL;
 		}
@@ -751,10 +757,17 @@ class MySQLie extends mysqli
 	/**
 	 * Throw the database error
 	 *
+	 * @param string|null $message
+	 *
 	 * @throws \Exception
 	 */
-	protected function throw_error() : void
+	protected function throw_error(?string $message = NULL) : void
 	{
-		throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $this->error));
+		if ($message === NULL)
+		{
+			$message = $this->error;
+		}
+		
+		throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $message));
 	}
 }
