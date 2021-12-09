@@ -3,6 +3,7 @@ declare(strict_types = 1);
 
 namespace Mireiawen\MySQLie;
 
+use JetBrains\PhpStorm\Pure;
 use mysqli;
 
 /**
@@ -26,29 +27,79 @@ class MySQLie extends mysqli
 	 * @param string $charset
 	 *    The connection character set to use
 	 *
-	 * @throws \Exception
-	 *    On connection errors
+	 * @throws \RuntimeException
+	 *    In case the required extensions are not loaded
+	 *
+	 * @throws \mysqli_sql_exception
+	 *    On database connection errors
 	 */
 	public function __construct(string $database, string $username, string $password, string $hostname, string $charset = 'utf8')
 	{
+		// Check for translation support
+		if (!\extension_loaded('gettext'))
+		{
+			throw new \RuntimeException('gettext extension is required!');
+		}
+		
 		// Check for MySQLi support
 		if (!\extension_loaded('mysqli'))
 		{
-			throw new \Exception(\_('MySQLi extension is required!'));
+			throw new \RuntimeException(\_('MySQLi extension is required!'));
 		}
 		
+		// Set up the MySQLi error reporting
+		\mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+		
+		/**
+		 * @link  https://www.php.net/manual/en/mysqli.construct.php
+		 *
+		 * Object-oriented style only:
+		 * If the connection fails, an object is still returned. To check
+		 * whether the connection failed, use either the mysqli_connect_error()
+		 * function or the mysqli->connect_error property as in the preceding
+		 * examples.
+		 */
 		@parent::__construct($hostname, $username, $password, $database);
 		if ($this->connect_errno)
 		{
-			throw new \Exception(\sprintf(\_('Unable to connect to database: %s'), $this->connect_error));
+			throw new \mysqli_sql_exception(\sprintf(\_('Unable to connect to database: %s'), $this->connect_error));
 		}
 		
+		// Set the initial charset for connection
 		$this->set_charset($charset);
 	}
 	
-	/* ************************************************************************
-	 * Custom methods begin here
-	 * ************************************************************************/
+	/**
+	 * Prepare an SQL statement for execution
+	 *
+	 * @param string $query
+	 *    The query, as a string
+	 *
+	 * @return MySQLie_stmt
+	 *    Prepared statement object
+	 *
+	 * @throws \mysqli_sql_exception
+	 *    On database errors
+	 *
+	 * @noinspection PhpMissingParentCallCommonInspection
+	 */
+	public function prepare($query) : MySQLie_stmt
+	{
+		return new MySQLie_stmt($this, $query);
+	}
+	
+	/**
+	 * Constructs a new mysqli_stmt object
+	 *
+	 * @return MySQLie_stmt
+	 *    The initialized statement object
+	 *
+	 * @noinspection PhpMissingParentCallCommonInspection
+	 */
+	public function stmt_init() : MySQLie_stmt
+	{
+		return new MySQLie_stmt($this, NULL);
+	}
 	
 	/**
 	 * Escape an identifier name for the SQL query
@@ -78,6 +129,7 @@ class MySQLie extends mysqli
 	 * @return string
 	 *    The escaped query
 	 */
+	#[Pure]
 	public function escape_query_identifiers(string $sql, array $identifiers) : string
 	{
 		foreach ($identifiers as &$identifier)
@@ -93,9 +145,9 @@ class MySQLie extends mysqli
 	 *
 	 * @param bool $state
 	 *    TRUE to turn foreign key checks on
-	 *    FALSE to turn foreign key checks off,,
+	 *    FALSE to turn foreign key checks off
 	 *
-	 * @throws \Exception
+	 * @throws \mysqli_sql_exception
 	 *  On database errors
 	 */
 	public function foreign_key_checks(bool $state) : void
@@ -105,7 +157,7 @@ class MySQLie extends mysqli
 		$stmt = $this->prepare($sql);
 		
 		// Bind the parameters
-		$s = \intval($state);
+		$s = (int)$state;
 		$stmt->bind_param('i', $s);
 		
 		// Execute it
@@ -119,7 +171,7 @@ class MySQLie extends mysqli
 	 *    The autocommit status; TRUE if
 	 *    it is on, FALSE if it is off
 	 *
-	 * @throws \Exception
+	 * @throws \mysqli_sql_exception
 	 *  On database errors
 	 */
 	public function get_autocommit() : bool
@@ -152,7 +204,7 @@ class MySQLie extends mysqli
 	 * @return int
 	 *    The auto increment value
 	 *
-	 * @throws \Exception
+	 * @throws \mysqli_sql_exception
 	 *  On database errors
 	 */
 	public function get_autoincrement(string $table) : int
@@ -175,7 +227,7 @@ class MySQLie extends mysqli
 			return $row['AUTO_INCREMENT'];
 		}
 		
-		throw new \Exception(\sprintf(\_('AUTO_INCREMENT was not set for %s'), $table));
+		throw new \mysqli_sql_exception(\sprintf(\_('AUTO_INCREMENT was not set for %s'), $table));
 	}
 	
 	/**
@@ -184,7 +236,7 @@ class MySQLie extends mysqli
 	 * @param string $table
 	 *    Name of the table to be truncated
 	 *
-	 * @throws \Exception
+	 * @throws \mysqli_sql_exception
 	 *  On database errors
 	 */
 	public function truncate(string $table) : void
@@ -195,579 +247,5 @@ class MySQLie extends mysqli
 		
 		// Execute it
 		$stmt->execute();
-	}
-	
-	/* ************************************************************************
-	 * Overloaded methods begin here
-	 * ************************************************************************/
-	
-	/**
-	 * Turns on or off auto-committing database modifications
-	 *
-	 * @param bool $mode
-	 *    Whether to turn on auto-commit or not
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function autocommit($mode) : void
-	{
-		if (!parent::autocommit($mode))
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Starts a transaction
-	 *
-	 * @param int $flags
-	 *    See https://www.php.net/manual/mysqli.begin-transaction.php
-	 *
-	 * @param string|null $name
-	 *    Savepoint name for the transaction
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function begin_transaction($flags = NULL, $name = NULL) : void
-	{
-		if (!parent::begin_transaction($flags, $name))
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Changes the user of the specified database connection
-	 *
-	 * @param string $user
-	 *    The MySQL user name
-	 *
-	 * @param string $password
-	 *    The MySQL password
-	 *
-	 * @param string $database
-	 *    The database to change to
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function change_user($user, $password, $database) : void
-	{
-		if (!parent::change_user($user, $password, $database))
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Closes a previously opened database connection
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function close() : void
-	{
-		if (!parent::close())
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Commits the current transaction
-	 *
-	 * @param int $flags
-	 *    A bitmask of MYSQLI_TRANS_COR_* constants
-	 *
-	 * @param string|NULL $name
-	 *    If provided then COMMIT/$name/ is executed
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function commit($flags = NULL, $name = NULL) : void
-	{
-		if (!parent::commit($flags, $name))
-		{
-			$this->throw_error();
-		};
-	}
-	
-	/**
-	 * Returns statistics about the client connection
-	 *
-	 * @return array
-	 *    Array with connection stats
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function get_connection_stats() : array
-	{
-		$result = parent::get_connection_stats();
-		if ($result === FALSE)
-		{
-			$this->throw_error();
-		}
-		
-		return $result;
-	}
-	
-	/**
-	 * Asks the server to kill a MySQL thread
-	 *
-	 * @param int $processid
-	 *    MySQL thread to kill
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function kill($processid) : void
-	{
-		if (!parent::kill($processid))
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Prepare next result from multi_query
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function next_result() : void
-	{
-		if (!parent::next_result())
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Set options
-	 *
-	 * @param int $option
-	 *    The option that you want to set
-	 *
-	 * @param mixed $value
-	 *    The value for the option
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function options($option, $value) : void
-	{
-		if (parent::options($option, $value))
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Pings a server connection
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function ping() : void
-	{
-		if (!parent::ping())
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Poll connections
-	 *
-	 * @param array $read
-	 *    List of connections to check for outstanding results that can be read
-	 *
-	 * @param array $error
-	 *    List of connections on which an error occurred, for example, query failure or lost connection
-	 *
-	 * @param array $reject
-	 *    List of connections rejected because no asynchronous query has been run on for which the function could poll results
-	 *
-	 * @param int $sec
-	 *    Maximum number of seconds to wait, must be non-negative
-	 *
-	 * @param int $usec
-	 *    Maximum number of microseconds to wait, must be non-negative
-	 *
-	 * @return int
-	 *    Returns number of ready connections
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public static function poll(&$read, &$error, &$reject, $sec, $usec = 0) : int
-	{
-		$result = parent::poll($read, $error, $reject, $sec, $usec);
-		if ($result === FALSE)
-		{
-			throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), _('Database polling failed')));
-		}
-		
-		return $result;
-	}
-	
-	/**
-	 * Prepare an SQL statement for execution
-	 *
-	 * @param string $query
-	 *    The query, as a string
-	 *
-	 * @return MySQLie_stmt
-	 *    Prepared statement object
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function prepare($query) : MySQLie_stmt
-	{
-		$stmt = new MySQLie_stmt($this, $query);
-		if ($stmt === FALSE)
-		{
-			$this->throw_error();
-		}
-		
-		return $stmt;
-	}
-	
-	/**
-	 * @param string $query
-	 * @param int $resultmode
-	 *
-	 * @return \mysqli_result|null
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function query($query, $resultmode = MYSQLI_STORE_RESULT) : ?\mysqli_result
-	{
-		$result = parent::query($query, $resultmode);
-		
-		// Check for error
-		if ($result === FALSE && $this->errno !== 0)
-		{
-			$this->throw_error();
-		}
-		
-		// False is failure, but we have no idea what went wrong
-		if ($result === FALSE)
-		{
-			$this->throw_error(_('Unknown error'));
-		}
-		
-		if ($result === TRUE)
-		{
-			return NULL;
-		}
-		
-		return $result;
-	}
-	
-	/**
-	 * Opens a connection to a mysql server
-	 *
-	 * @param string|null $host
-	 *    Can be either a host name or an IP address. Passing the NULL value or the string "localhost" to this parameter, the local host is assumed
-	 *
-	 * @param string|null $username
-	 *    The MySQL user name
-	 *
-	 * @param string|null $passwd
-	 *    If provided or NULL, the MySQL server will attempt to authenticate the user against those user records which have no password only
-	 *
-	 * @param string|null $dbname
-	 *    If provided will specify the default database to be used when performing queries
-	 *
-	 * @param int|null $port
-	 *    Specifies the port number to attempt to connect to the MySQL server
-	 *
-	 * @param string|null $socket
-	 *    Specifies the socket or named pipe that should be used
-	 *
-	 * @param int|null $flags
-	 *    With the parameter flags you can set different connection options
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function real_connect($host = NULL, $username = NULL, $passwd = NULL, $dbname = NULL, $port = NULL, $socket = NULL, $flags = NULL) : void
-	{
-		if (!parent::real_connect($host, $username, $passwd, $dbname, $port, $socket, $flags))
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Escapes special characters in a string for use in an SQL statement, taking into account the current charset of the connection
-	 *
-	 * @param string $escapestr
-	 *    The string to be escaped
-	 *
-	 * @return string
-	 *    The escaped string
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function real_escape_string($escapestr) : string
-	{
-		$result = @parent::real_escape_string($escapestr);
-		if ($result === NULL)
-		{
-			$this->throw_error();
-		}
-		
-		return $result;
-	}
-	
-	/**
-	 * Execute an SQL query
-	 *
-	 * @param string $query
-	 *    The query, as a string
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function real_query($query) : void
-	{
-		if (!parent::real_query($query))
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Get result from async query
-	 *
-	 * @return \mysqli_result
-	 *    The query result
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function reap_async_query() : \mysqli_result
-	{
-		$result = parent::reap_async_query();
-		if ($result === FALSE)
-		{
-			$this->throw_error();
-		}
-		
-		return $result;
-	}
-	
-	/**
-	 * Flushes tables or caches, or resets the replication server information
-	 *
-	 * @param int $options
-	 *    The options to refresh, using the MYSQLI_REFRESH_* constants
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function refresh($options) : void
-	{
-		/** @noinspection PhpVoidFunctionResultUsedInspection */
-		if (!parent::refresh($options))
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Removes the named savepoint from the set of savepoints of the current transaction
-	 *
-	 * @param string $name
-	 *    Name of the savepoint to remove
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function release_savepoint($name) : void
-	{
-		if (!parent::release_savepoint($name))
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Rolls back current transaction
-	 *
-	 * @param int $flags
-	 *    A bitmask of MYSQLI_TRANS_COR_* constants
-	 *
-	 * @param string|null $name
-	 *    If provided then ROLLBACK/$name/ is executed
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function rollback($flags = 0, $name = NULL) : void
-	{
-		if (!parent::rollback($flags, $name))
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Set a named transaction savepoint
-	 *
-	 * @param string $name
-	 *    Name of the savepoint
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function savepoint($name) : void
-	{
-		if (!parent::savepoint($name))
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Selects the default database for database queries
-	 *
-	 * @param string $dbname
-	 *    The database name.
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function select_db($dbname) : void
-	{
-		if (!parent::select_db($dbname))
-		{
-			$this->throw_error();
-		}
-	}
-	
-	/**
-	 * Sets the default client character set
-	 *
-	 * @param string $charset
-	 *    The charset to be set as default
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function set_charset($charset) : void
-	{
-		if (!parent::set_charset($charset))
-		{
-			throw new \Exception(\sprintf(\_('Unable to set character set: %s'), $this->error));
-		}
-	}
-	
-	/**
-	 * Gets the current system status
-	 *
-	 * @return string
-	 *    A string describing the server status
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function stat() : string
-	{
-		$result = parent::stat();
-		if ($result === FALSE)
-		{
-			$this->throw_error();
-		}
-		
-		return $result;
-	}
-	
-	/**
-	 * Constructs a new mysqli_stmt object
-	 *
-	 * @return MySQLie_stmt
-	 *    The initialized statement object
-	 */
-	public function stmt_init() : MySQLie_stmt
-	{
-		$stmt = new MySQLie_stmt($this, NULL);
-		return $stmt;
-	}
-	
-	/**
-	 * Transfers a result set from the last query
-	 *
-	 * @param int $option
-	 *    The option that you want to set
-	 *
-	 * @return \mysqli_result|null
-	 *    The buffered result object
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function store_result($option = NULL) : ?\mysqli_result
-	{
-		$result = parent::store_result();
-		
-		// Check for error
-		if ($result === FALSE && $this->errno !== 0)
-		{
-			$this->throw_error();
-		}
-		
-		if ($result === FALSE)
-		{
-			return NULL;
-		}
-		
-		return $result;
-	}
-	
-	/**
-	 * Initiate a result set retrieval
-	 *
-	 * @return \mysqli_result
-	 *    The buffered result object
-	 *
-	 * @throws \Exception
-	 *    On database errors
-	 */
-	public function use_result() : \mysqli_result
-	{
-		$result = parent::use_result();
-		
-		if ($result === FALSE)
-		{
-			$this->throw_error();
-		}
-		
-		return $result;
-	}
-	
-	/**
-	 * Throw the database error
-	 *
-	 * @param string|null $message
-	 *
-	 * @throws \Exception
-	 */
-	protected function throw_error(?string $message = NULL) : void
-	{
-		if ($message === NULL)
-		{
-			$message = $this->error;
-		}
-		
-		throw new \Exception(\sprintf(\_('Unable to execute database query: %s'), $message));
 	}
 }
